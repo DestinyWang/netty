@@ -385,6 +385,10 @@ public abstract class AbstractNioChannel extends AbstractChannel {
             try {
                 // javaChannel 创建一个 JDK 底层 Channel, 并保存到本类的局部变量
                 // 调用 JDK 底层的 register 方法进行注册
+                // SelectableChannel#register(Selector, int, Object) 注册 Java 原生的 NIO 对象到 Selector 对象上
+                // 注册感兴趣事件为 0 的原因:
+                // 1. 注册方式是多态的, 既可以被 NIOServerSocketChannel 用来监听客户端的连接接入, 也可以注册 SocketChannel 用来监听网络读写操作
+                // 2. 通过 SelectionKey#interestOps(int) 方法可以方便的修改监听操作位, 所以, 此处注册需要获取 SelectionKey 并给 AbstractNIOChannel 的成员变量 selectionKey 赋值
                 selectionKey = javaChannel().register(eventLoop().unwrappedSelector(), 0, this);
                 return;
             } catch (CancelledKeyException e) {

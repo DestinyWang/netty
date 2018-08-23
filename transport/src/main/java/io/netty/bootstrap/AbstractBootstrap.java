@@ -354,12 +354,13 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
     }
 
     /**
-     *
-     * @return
+     * 初始化并注册一个 Channel 对象
+     * @return ChannelFuture
      */
     final ChannelFuture initAndRegister() {
         Channel channel = null;
         try {
+            // 通过反射创建创建 Channel 对象 ReflectiveChannelFactory#newChannel()
             channel = channelFactory.newChannel();
 
             /*
@@ -373,21 +374,28 @@ public abstract class AbstractBootstrap<B extends AbstractBootstrap<B, C>, C ext
         } catch (Throwable t) {
             if (channel != null) {
                 // channel can be null if newChannel crashed (eg SocketException("too many open files"))
+                // 如果 Channel 对象已经创建, 强制关闭 Channel
                 channel.unsafe().closeForcibly();
                 // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
+
                 return new DefaultChannelPromise(channel, GlobalEventExecutor.INSTANCE).setFailure(t);
             }
             // as the Channel is not registered yet we need to force the usage of the GlobalEventExecutor
+            // 返回带异常的 DefaultChannelPromise, 由于 Channel 对象创建失败
+            // 需要创建一个 FailedChannel, 设置到 DefaultChannelPromise 中才能返回
             return new DefaultChannelPromise(new FailedChannel(), GlobalEventExecutor.INSTANCE).setFailure(t);
         }
 
-        // 核心逻辑从这里展开
+        // 核心逻辑从这里展开, 注册 Channel 到 EventLoopGroup
+        // 获取获取 EventLoopGroup 对象, 然后调用 register, 注册 Channel 到 EventLoopGroup 中
+        // 在方法内部, EventLoopGroup 会分配一个 EventLoop 对象, 将 Channel 注册到其上
         // 最终会调用到 AbstractChannel 的 register 方法上
         ChannelFuture regFuture = config().group().register(channel);
         if (regFuture.cause() != null) {
             if (channel.isRegistered()) {
                 channel.close();
             } else {
+                // 强制关闭 Channel
                 channel.unsafe().closeForcibly();
             }
         }
