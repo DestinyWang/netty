@@ -26,6 +26,7 @@ public interface EventExecutor extends EventExecutorGroup {
 
     /**
      * Returns a reference to itself.
+     * 返回自己
      */
     @Override
     EventExecutor next();

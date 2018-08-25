@@ -54,6 +54,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * {@link SingleThreadEventLoop} implementation which register the {@link Channel}'s to a
  * {@link Selector} and so does the multi-plexing of these in the event loop.
  *
+ * 继承 SingleThreadEventLoop 抽象类
+ * 实现对注册到其中的 Channel 的
  */
 public final class NioEventLoop extends SingleThreadEventLoop {
 
@@ -129,6 +131,10 @@ public final class NioEventLoop extends SingleThreadEventLoop {
      * break out of its selection process. In our case we use a timeout for
      * the select method and the select method will block for that time unless
      * waken up.
+     *
+     * wakenUp 表示是否应该唤醒正在阻塞的 select 操作，
+     * 可以看到 netty 在进行一次新的 loop 之前，都会将 wakeUp 被设置成 false，标志新的一轮 loop 的开始，
+     * 具体的 select 操作我们也拆分开来看
      */
     private final AtomicBoolean wakenUp = new AtomicBoolean();
 
@@ -418,6 +424,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                     case SelectStrategy.SELECT:
                         // 此处的 SELECT 类型对应 JavaIO 中的 ServerSocket.accept() 操作
                         // 以及 JavaIO 中的 Socket.getOutputStream() 操作
+                        // 1. 首先轮询注册到reactor线程对用的selector上的所有的channel的IO事件
                         select(wakenUp.getAndSet(false));
 
                         // 'wakenUp.compareAndSet(false, true)' is always evaluated
@@ -460,10 +467,11 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 final int ioRatio = this.ioRatio;
                 if (ioRatio == 100) {
                     try {
-                        // 对应处理每一个连接
+                        // 2. 处理产生网络 IO 事件的 channel
                         processSelectedKeys();
                     } finally {
                         // Ensure we always run tasks.
+                        // 3. 处理任务队列
                         runAllTasks();
                     }
                 } else {
@@ -755,6 +763,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
     private void select(boolean oldWakenUp) throws IOException {
         Selector selector = this.selector;
         try {
+            // 1.定时任务截至事时间快到了，中断本次轮询
             int selectCnt = 0;
             long currentTimeNanos = System.nanoTime();
             long selectDeadLineNanos = currentTimeNanos + delayNanos(currentTimeNanos);
@@ -773,6 +782,7 @@ public final class NioEventLoop extends SingleThreadEventLoop {
                 // Selector#wakeup. So we need to check task queue again before executing select operation.
                 // If we don't, the task might be pended until select operation was timed out.
                 // It might be pended until idle timeout if IdleStateHandler existed in pipeline.
+                // 2.轮询过程中发现有任务加入，中断本次轮询
                 if (hasTasks() && wakenUp.compareAndSet(false, true)) {
                     selector.selectNow();
                     selectCnt = 1;
